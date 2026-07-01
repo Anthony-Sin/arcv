@@ -50,6 +50,12 @@ LOCKED → **TARGET LOST** (red alert + searching) → REACQUIRE, with synchroni
 |---|---|
 | ![frames](docs/media/frames.png) | ![themes](docs/media/themes.png) |
 
+**HUD reference recreations** — five external HUD reference images rebuilt with the
+`arcv.overlay.hud_kit` primitives, then graded against the originals until *remarkably
+similar* (each row: reference **|** ARCV render):
+
+![HUD reference recreations](docs/media/hud_recreations.png)
+
 ---
 
 ## Why GPU? (OpenCV vs ARCV)
@@ -196,9 +202,12 @@ arcv/
   capture/camera.py   # threaded cv2.VideoCapture
   vision/             # detectors + DetectorPipeline -> normalized DetectionFrame
   components/         # one class per Arwes element (frames/ text/ effects/)
+  overlay/            # no-camera HUD kit: renderer.py, batch.py, anim.py,
+                      #   draw.py (pixel Draw surface), hud_kit.py (reusable primitives)
   passes/             # camera / hud / bloom / composite render passes
   shaders/            # GLSL 330 .vert/.frag
 examples/             # preview_static, compare, minimal_glfw, opencv_baseline
+  refs/               # reference-image recreations + _ref_render.py harness + gallery
 tests/
 ```
 
@@ -247,6 +256,59 @@ ov.render(time, target=fbo)
 
 `ov.vector` has `line / polyline / rect / rounded_rect(_fill) / ring / arc /
 disc / triangle_*`; `ov.text` does colored decipher/type-on/plain glyphs.
+
+### HUD kit primitives (`arcv.overlay.hud_kit`)
+
+A curated library of reusable, deterministic HUD building blocks — the genuinely
+reusable pieces distilled from the reference recreations. Each takes a
+pixel-coordinate drawing surface `Draw(overlay)` (or any duck-typed equivalent)
+as its first argument; colors are RGBA floats and coordinates are pixels.
+
+- **Icons / badges** — `warning_triangle`, `biohazard`, `radiation_trefoil`,
+  `hexagon`, `hex_badge`, `crescent`
+- **Textures / strips** — `hazard_stripes` (clipped diagonal caution stripes),
+  `barcode`, `waveform`, `spectrum_bar` (rainbow), `segmented_bar`
+- **Gauges / radar** — `tick_ring`, `radial_gauge` (progress arc + needle),
+  `sweep_wedge` (translucent radar sector), `contour_map` (organic topographic
+  loops)
+- **Wireframe** — `wireframe_sphere` (plain globe or swirling `vortex`),
+  `wireframe_terrain` (tilted 3D mesh), `face_mesh` (triangulated AR face)
+
+```python
+from arcv.overlay import Overlay, Draw, hud_kit
+ov = Overlay(ctx, (1280, 720)); d = Draw(ov)
+ov.begin()
+hud_kit.radial_gauge(d, 200, 200, 90, 0.62, (0.9,0.45,0.15,1), needle_deg=58)
+hud_kit.wireframe_sphere(d, 640, 360, 120, (0,1,1,1), vortex=True)
+hud_kit.hazard_stripes(d, 40, 40, 400, 70, (1,0.8,0,1))
+ov.render(0.0, target=fbo)
+```
+
+![HUD kit primitives](docs/media/hud_kit_demo.png)
+
+Built while recreating five external HUD references (see
+`examples/refs/refN_layout.py`). Regenerate the contact sheets with
+`python examples/refs/make_gallery.py` + `python examples/refs/kit_demo.py`
+(committed copies land in `docs/media/`).
+
+### Reference recreations
+
+Five external HUD reference images, each recreated with this kit and graded
+against the original until *remarkably similar* (sources under `examples/refs/`):
+
+| Ref | Reference | ARCV render | Score |
+|---|---|---|---|
+| **REF1** warning set | <img src="examples/refs/gallery/ref1_reference.webp" width="240"> | <img src="docs/media/hud_ref1.png" width="240"> | ~8.5 |
+| **REF2** cyberpunk wireframe | <img src="examples/refs/gallery/ref2_reference.webp" width="240"> | <img src="docs/media/hud_ref2.png" width="240"> | ~9 |
+| **REF3** radarscan | <img src="examples/refs/gallery/ref3_reference.webp" width="240"> | <img src="docs/media/hud_ref3.png" width="240"> | ~8.5 |
+| **REF4** windshield | <img src="examples/refs/gallery/ref4_reference.webp" width="240"> | <img src="docs/media/hud_ref4.png" width="240"> | ~9 |
+| **REF5** AR facescan | <img src="examples/refs/gallery/ref5_reference.webp" width="240"> | <img src="docs/media/hud_ref5.png" width="240"> | ~9 |
+
+Full-size side-by-side: [`hud_recreations.png`](docs/media/hud_recreations.png).
+Each was authored as a self-contained layout through the shared `_ref_render.py`
+harness — `glow` (additive + HDR bloom) or `flat` (premultiplied-over, for opaque
+dark-on-light art like the yellow warning panels). REF4/REF5 render the HUD on a
+dark base (the original photo plates aren't included).
 
 **Worked example — autonomous quadruped follow-HUD** ([examples/robot_hud.py](examples/robot_hud.py),
 [examples/robot_hud_layout.py](examples/robot_hud_layout.py)): a robot-dog tracking

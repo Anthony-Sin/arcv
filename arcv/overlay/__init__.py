@@ -6,8 +6,11 @@ flicker) so hand-laid HUDs can assemble/boot like Arwes.
 """
 
 from . import anim
+from . import hud_kit
 from .anim import Sequencer, flicker
 from .batch import TextBatch, VectorBatch
+from .draw import Draw
 from .renderer import Overlay
 
-__all__ = ["Overlay", "VectorBatch", "TextBatch", "Sequencer", "flicker", "anim"]
+__all__ = ["Overlay", "VectorBatch", "TextBatch", "Sequencer", "flicker", "anim",
+           "Draw", "hud_kit"]
