@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "arcv"
+version = "0.1.0"
+description = "Arwes-style sci-fi HUD rendered with ModernGL GLSL shaders over a live OpenCV camera feed."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "ARCV" }]
+keywords = ["arwes", "hud", "opengl", "moderngl", "opencv", "shaders", "sci-fi", "glsl"]
+dependencies = [
+    "moderngl>=5.10",
+    "numpy>=1.23",
+    "opencv-python>=4.7",
+    "Pillow>=9.0",
+]
+
+[project.optional-dependencies]
+# Only needed for the live windowed example (examples/minimal_glfw.py).
+# The library itself is window-agnostic and consumes an existing moderngl.Context.
+window = ["moderngl-window>=3.0,<4", "glfw>=2.5"]
+dev = ["pytest>=7.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["arcv"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"arcv/shaders" = "arcv/shaders"
+"arcv/resources" = "arcv/resources"

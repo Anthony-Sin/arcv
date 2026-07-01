@@ -1,0 +1,11 @@
+# Normalize line endings for text; store LF in the repo.
+* text=auto eol=lf
+
+# Binary assets (never diff/normalize)
+*.png binary
+*.gif binary
+*.mp4 binary
+*.wav binary
+*.mp3 binary
+*.ttf binary
+*.onnx binary

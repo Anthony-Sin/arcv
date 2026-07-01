@@ -1,0 +1,3 @@
+# Bundled resources (fonts, optional DNN models) live here.
+# ARCV currently builds its glyph atlas from a system monospace font at runtime
+# (Consolas / Courier New / DejaVu Sans Mono), so no font is required here.

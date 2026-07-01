@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+*.png
+!docs/**/*.png
+# generated demo media (committed showcase media lives under docs/media/)
+*.gif
+!docs/**/*.gif
+*.mp4
+*.wav
+# downloaded assets (fetched via arcv.download_yunet() / arcv.audio.download_arwes_sounds())
+*.onnx
+*.mp3
