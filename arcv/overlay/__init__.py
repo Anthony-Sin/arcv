@@ -11,6 +11,7 @@ from .anim import Sequencer, flicker
 from .batch import TextBatch, VectorBatch
 from .draw import Draw
 from .renderer import Overlay
+from .flat import FlatOverlay
 
-__all__ = ["Overlay", "VectorBatch", "TextBatch", "Sequencer", "flicker", "anim",
-           "Draw", "hud_kit"]
+__all__ = ["Overlay", "FlatOverlay", "VectorBatch", "TextBatch", "Sequencer",
+           "flicker", "anim", "Draw", "hud_kit"]

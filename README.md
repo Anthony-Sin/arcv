@@ -27,6 +27,34 @@ ARCV is **library-only**: you own the window + GL context + main loop. You creat
 
 ![CV-reactive HUD](docs/media/detection_preview.png)
 
+**WARNING // Target-Acquisition HUD** — a **yellow**, ref1-style HUD laid *opaque*
+over the OpenCV feed: bright angular WARNING panels (black-on-yellow), a live
+OPTICAL FEED window with target brackets + reticle locked onto detections, and
+only the useful CV telemetry (status · targets · confidence · position ·
+distance · fps · signal). The left and right sides are **dynamic card stacks** —
+small angular cards that *spawn and collapse as needed* (a DEPTH card while
+tracking → an ALERT card when the target is lost; a secondary-target card only
+when there are 2+ targets), and the column reflows so there's no dead space. It
+boots up, then plays LOCKED → **TARGET LOST** → REACQUIRE with synced bleeps —
+all in Share Tech Mono ([examples/warning_hud.py](examples/warning_hud.py)):
+
+![WARNING target-acquisition HUD](docs/media/warning_hud.gif)
+
+| Locked (tracking) | Target lost (searching) |
+|---|---|
+| ![locked](docs/media/warning_locked.png) | ![lost](docs/media/warning_lost.png) |
+
+It renders through **`FlatOverlay`** — the opaque, over-camera counterpart to the
+glowing `Overlay` (the additive bloom pipeline can only *add* light, so it can't
+paint dark-on-light; `FlatOverlay` composites premultiplied-*over* an opaque base
+or a live frame instead).
+
+```bash
+python examples/warning_hud.py                            # gif + timeline + mp4 + stills
+python examples/warning_hud.py --live                     # scripted story in a window
+python examples/warning_hud.py --live --camera 0 --sound  # real webcam + CV + bleeps
+```
+
 **Autonomous quadruped follow-HUD** — a hand-laid overlay that *boots up*, then plays
 LOCKED → **TARGET LOST** (red alert + searching) → REACQUIRE, with synchronized bleeps
 ([examples/robot_hud.py](examples/robot_hud.py)):
@@ -171,6 +199,7 @@ python examples/preview_static.py --frame kranox --text typeon --bg gridlines,mo
 |--------|-------|--------------|
 | `examples/preview_static.py` | core only | HUD over a still image or synthetic scene (headless `--save` or window) |
 | `examples/compare.py` | core only | OpenCV vs ARCV side-by-side + FPS (`--bench`, `--save`, `--camera`, `--image`) |
+| `examples/warning_hud.py` | core only | yellow WARNING / target-acquisition HUD *over the feed* (`FlatOverlay`), boot + LOCKED/LOST story + bleeps (`--live`, `--camera`, `--sound`) |
 | `examples/minimal_glfw.py` | `[window]` | live resizable window driven by a webcam |
 
 The headless examples create an offscreen `moderngl.create_standalone_context()` and show
@@ -256,6 +285,26 @@ ov.render(time, target=fbo)
 
 `ov.vector` has `line / polyline / rect / rounded_rect(_fill) / ring / arc /
 disc / triangle_*`; `ov.text` does colored decipher/type-on/plain glyphs.
+
+**`FlatOverlay`** is the *opaque* sibling of `Overlay`. `Overlay` composites
+**additively** (bright strokes bloom on a dark scene) — great for glow, but
+additive light can only *add*, so it can't paint dark content on a bright fill.
+`FlatOverlay` draws the same `vector`/`text` batches **premultiplied-*over*** an
+opaque base — a solid color **or a live camera frame** — so hard-edged,
+high-contrast HUDs (opaque panels, **black-on-yellow**, bright reticles over the
+darkened feed) render correctly. Same immediate-mode API:
+
+```python
+from arcv import FlatOverlay
+ov = FlatOverlay(ctx, (1280, 720))
+ov.begin()
+ov.vector.rounded_rect_fill(40, 40, 300, 160, 8, (0.96, 0.88, 0.06, 1))   # yellow panel
+ov.text.text("WARNING", 56, 60, 24, (0.05, 0.05, 0.04, 1))                # black-on-yellow
+ov.render(cam_frame=frame_bgr, target=fbo)    # panels sit opaque over the feed
+img = ov.read_pixels(fbo)
+```
+
+The [`warning_hud.py`](examples/warning_hud.py) demo above is built entirely on it.
 
 ### HUD kit primitives (`arcv.overlay.hud_kit`)
 

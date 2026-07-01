@@ -56,9 +56,9 @@ from .components.text import TEXT_STYLES  # noqa: E402
 __all__ += ["FRAME_STYLES", "BACKGROUND_STYLES", "TEXT_STYLES"]
 
 # Overlay UI kit (lay out HUD elements at fixed positions, no camera needed)
-from .overlay import Overlay, Draw  # noqa: E402
+from .overlay import Overlay, FlatOverlay, Draw  # noqa: E402
 
-__all__ += ["Overlay", "Draw"]
+__all__ += ["Overlay", "FlatOverlay", "Draw"]
 
 # Synthesized HUD audio (bleeps): live playback + cue-list MP4 audio export
 from . import audio  # noqa: E402
