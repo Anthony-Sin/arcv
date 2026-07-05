@@ -8,6 +8,7 @@ flicker) so hand-laid HUDs can assemble/boot like Arwes.
 from . import anim
 from . import hud_kit
 from . import adapters
+from . import fonts
 from .anim import (Sequencer, flicker, Timer, Animation, Timeline, Stagger,
                    stagger, Player)
 from .adapters import DriverFromSignal, Draggable, Scope
@@ -19,4 +20,4 @@ from .flat import FlatOverlay
 __all__ = ["Overlay", "FlatOverlay", "VectorBatch", "TextBatch", "Sequencer",
            "flicker", "anim", "Draw", "hud_kit", "Timer", "Animation", "Timeline",
            "Stagger", "stagger", "Player", "adapters", "DriverFromSignal",
-           "Draggable", "Scope"]
+           "Draggable", "Scope", "fonts"]

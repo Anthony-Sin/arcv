@@ -71,11 +71,16 @@ class Draw:
                fill=False, closed=True, reveal=1.0):
         self.ov.vector.marker(cx, cy, local_pts, c, angle, scale, w, fill, closed, reveal)
 
-    def text(self, s, x, y, h, c, align="left", mode="plain", t=0.0, progress=1.0):
-        self.ov.text.text(s, x, y, h, c, align, mode, t, progress)
+    def add_font(self, name, font_path=None, **atlas_kw):
+        """Register a named font (TTF path) selectable via ``font=`` on text calls."""
+        self.ov.text.add_font(name, font_path=font_path, **atlas_kw)
+        return self
 
-    def text_fx(self, s, x, y, h, c, align="left", per_char=None, line_height=1.3):
-        self.ov.text.text_transformed(s, x, y, h, c, align, per_char, line_height)
+    def text(self, s, x, y, h, c, align="left", mode="plain", t=0.0, progress=1.0, font="default"):
+        self.ov.text.text(s, x, y, h, c, align, mode, t, progress, font)
 
-    def text_width(self, s, h):
-        return self.ov.text.measure(s, h)
+    def text_fx(self, s, x, y, h, c, align="left", per_char=None, line_height=1.3, font="default"):
+        self.ov.text.text_transformed(s, x, y, h, c, align, per_char, line_height, font)
+
+    def text_width(self, s, h, font="default"):
+        return self.ov.text.measure(s, h, font)

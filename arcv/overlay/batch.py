@@ -176,36 +176,84 @@ class VectorBatch:
 
 
 class TextBatch:
+    """Batched glyph quads with support for **multiple named fonts**.
+
+    A default monospace atlas is always present under the name ``"default"``;
+    extra faces are registered with :meth:`add_font` (any TTF path, or a prebuilt
+    :class:`FontAtlas`) and selected per draw via ``font=``. Each font keeps its
+    own atlas texture + vertex buffer, so mixing faces in one HUD costs one extra
+    draw call per font. An unknown ``font`` name falls back to ``"default"``.
+    """
+
+    DEFAULT = "default"
+
     def __init__(self, ctx, atlas: FontAtlas = None) -> None:
         self.ctx = ctx
-        self.atlas = atlas or FontAtlas()
         self.prog = ctx.program(
             vertex_shader=shaders.load("overlay_text.vert"),
             fragment_shader=shaders.load("overlay_text.frag"),
         )
-        img = np.ascontiguousarray(self.atlas.image)
-        self.tex = ctx.texture(
-            (self.atlas.atlas_w, self.atlas.atlas_h), 1, img.tobytes(), dtype="f1", alignment=1
-        )
-        self.tex.filter = (9729, 9729)
-        self.tex.repeat_x = False
-        self.tex.repeat_y = False
-        self.data: List[float] = []
-        self._buf = None
-        self._vao = None
-        self._cap = 0
+        self._fonts: dict = {}
+        self._register(self.DEFAULT, atlas or FontAtlas())
+
+    # -- fonts -------------------------------------------------------------
+    def _make_tex(self, atlas: FontAtlas):
+        img = np.ascontiguousarray(atlas.image)
+        tex = self.ctx.texture((atlas.atlas_w, atlas.atlas_h), 1, img.tobytes(),
+                               dtype="f1", alignment=1)
+        tex.filter = (9729, 9729)
+        tex.repeat_x = False
+        tex.repeat_y = False
+        return tex
+
+    def _register(self, name: str, atlas: FontAtlas) -> None:
+        self._fonts[name] = {"atlas": atlas, "tex": self._make_tex(atlas),
+                             "data": [], "buf": None, "vao": None, "cap": 0}
+
+    def add_font(self, name: str, font_path: str = None, atlas: FontAtlas = None,
+                 **atlas_kw) -> "TextBatch":
+        """Register a named font from a TTF path (or a prebuilt atlas).
+
+        No-op if the name already exists. A path that cannot be loaded falls back
+        to the bundled face via :class:`FontAtlas`, so this never raises for a
+        missing font — the label just renders in the fallback.
+        """
+        if name in self._fonts:
+            return self
+        a = atlas if atlas is not None else FontAtlas(font_path=font_path, **atlas_kw)
+        self._register(name, a)
+        return self
+
+    def has_font(self, name: str) -> bool:
+        return name in self._fonts
+
+    @property
+    def fonts(self):
+        return tuple(self._fonts.keys())
+
+    def _font(self, name: str) -> dict:
+        return self._fonts.get(name) or self._fonts[self.DEFAULT]
+
+    @property
+    def atlas(self) -> FontAtlas:
+        return self._fonts[self.DEFAULT]["atlas"]
 
     def clear(self) -> None:
-        self.data = []
+        for f in self._fonts.values():
+            f["data"] = []
 
-    def advance(self, height: float) -> float:
-        return height * self.atlas.aspect
+    def advance(self, height: float, font: str = DEFAULT) -> float:
+        return height * self._font(font)["atlas"].aspect
 
-    def measure(self, s: str, height: float) -> float:
-        return len(s) * self.advance(height)
+    def measure(self, s: str, height: float, font: str = DEFAULT) -> float:
+        return len(s) * self.advance(height, font)
 
-    def text(self, s, x, y, height, color: Color, align="left", mode="plain", t=0.0, progress=1.0) -> None:
-        adv = self.advance(height)
+    def text(self, s, x, y, height, color: Color, align="left", mode="plain",
+             t=0.0, progress=1.0, font: str = DEFAULT) -> None:
+        F = self._font(font)
+        atlas = F["atlas"]
+        data = F["data"]
+        adv = height * atlas.aspect
         total = len(s) * adv
         if align == "center":
             x -= total * 0.5
@@ -215,7 +263,7 @@ class TextBatch:
         n = len(s)
         revealed = n if mode == "plain" else int(round(progress * n))
         bucket = int(t * 14.0)
-        pool = self.atlas.scramble_pool
+        pool = atlas.scramble_pool
         for k, ch in enumerate(s):
             disp = ch
             if mode == "typeon" and k >= revealed:
@@ -224,7 +272,7 @@ class TextBatch:
                 disp = pool[((bucket * 92821) ^ (k * 52711)) % len(pool)]
             if disp == " ":
                 continue
-            u0, u1 = self.atlas.u_range(disp)
+            u0, u1 = atlas.u_range(disp)
             x0 = x + k * adv
             x1 = x0 + adv
             y0, y1 = y, y + height
@@ -232,10 +280,10 @@ class TextBatch:
                 (x0, y0, u0, 0.0), (x1, y0, u1, 0.0), (x1, y1, u1, 1.0),
                 (x0, y0, u0, 0.0), (x1, y1, u1, 1.0), (x0, y1, u0, 1.0),
             ):
-                self.data.extend((px, py, u, v, r, g, b, a))
+                data.extend((px, py, u, v, r, g, b, a))
 
     def text_transformed(self, s, x, y, height, color: Color, align="left",
-                         per_char=None, line_height: float = 1.3) -> None:
+                         per_char=None, line_height: float = 1.3, font: str = DEFAULT) -> None:
         """Draw text with an independent per-character transform — the static
         capability behind anime.js "split text".
 
@@ -244,9 +292,12 @@ class TextBatch:
         Each glyph is scaled about its own centre, alpha-multiplied, then shifted
         by ``(dx, dy)`` — enough for per-unit fade / slide / scale-in entrances.
         Multi-line strings (``\\n``) are laid out so line-level staggers work.
-        ``per_char=None`` renders plain text.
+        ``per_char=None`` renders plain text. ``font`` selects a registered face.
         """
-        adv = self.advance(height)
+        F = self._font(font)
+        atlas = F["atlas"]
+        data = F["data"]
+        adv = height * atlas.aspect
         r, g, b, a = color
         lines = s.split("\n")
         line_len = [len(ln) for ln in lines]
@@ -278,7 +329,7 @@ class TextBatch:
             col += 1
             if ch == " " or alpha <= 0.0 or scale <= 0.0:
                 continue
-            u0, u1 = self.atlas.u_range(ch)
+            u0, u1 = atlas.u_range(ch)
             x0, x1 = col_x, col_x + adv
             y0, y1 = line_y, line_y + height
             cx, cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
@@ -292,7 +343,7 @@ class TextBatch:
                 (x0, y0, u0, 0.0), (x1, y0, u1, 0.0), (x1, y1, u1, 1.0),
                 (x0, y0, u0, 0.0), (x1, y1, u1, 1.0), (x0, y1, u0, 1.0),
             ):
-                self.data.extend((px, py, u, v, r, g, b, ca))
+                data.extend((px, py, u, v, r, g, b, ca))
 
     @staticmethod
     def _align_x(x: float, total: float, align: str) -> float:
@@ -302,25 +353,26 @@ class TextBatch:
             return x - total
         return x
 
-    def _ensure(self, nbytes: int) -> None:
-        if self._buf is None or nbytes > self._cap:
-            if self._buf is not None:
-                self._buf.release()
-                self._vao.release()
-            self._cap = max(nbytes, 1 << 16)
-            self._buf = self.ctx.buffer(reserve=self._cap, dynamic=True)
-            self._vao = self.ctx.vertex_array(
-                self.prog, [(self._buf, "2f 2f 4f", "in_pos", "in_auv", "in_color")]
+    def _ensure_font(self, F: dict, nbytes: int) -> None:
+        if F["buf"] is None or nbytes > F["cap"]:
+            if F["buf"] is not None:
+                F["buf"].release()
+                F["vao"].release()
+            F["cap"] = max(nbytes, 1 << 16)
+            F["buf"] = self.ctx.buffer(reserve=F["cap"], dynamic=True)
+            F["vao"] = self.ctx.vertex_array(
+                self.prog, [(F["buf"], "2f 2f 4f", "in_pos", "in_auv", "in_color")]
             )
 
     def draw(self, resolution: Tuple[int, int]) -> None:
-        if not self.data:
-            return
-        arr = np.asarray(self.data, dtype="f4")
-        b = arr.tobytes()
-        self._ensure(len(b))
-        self._buf.write(b)
-        self.tex.use(0)
         self.prog["u_atlas"].value = 0
         self.prog["u_resolution"].value = (float(resolution[0]), float(resolution[1]))
-        self._vao.render(vertices=len(arr) // 8)
+        for F in self._fonts.values():
+            if not F["data"]:
+                continue
+            arr = np.asarray(F["data"], dtype="f4")
+            b = arr.tobytes()
+            self._ensure_font(F, len(b))
+            F["buf"].write(b)
+            F["tex"].use(0)
+            F["vao"].render(vertices=len(arr) // 8)
