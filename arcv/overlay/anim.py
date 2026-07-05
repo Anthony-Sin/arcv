@@ -1224,3 +1224,91 @@ def text_entrance(
         return (0.0, dy, alpha, scale)
 
     return per_char
+
+
+# ===========================================================================
+#  Phase 6 — playback runner (wall-clock -> t) over the pure model
+#
+#  The model (Timer/Animation/Timeline) stays deterministic in t. Player is the
+#  only place a mutable playhead lives; it maps real elapsed time to a model time
+#  and fires the once-only callbacks via each object's forward tick().
+# ===========================================================================
+class Player:
+    """Drive a pure ``.at(t)`` target from wall-clock time for live demos.
+
+    Wraps a :class:`Timer` / :class:`Animation` / :class:`Timeline` (anything with
+    ``.at(t)``, optionally ``.tick(t)`` / ``.duration`` / ``.completed``) and maps
+    real elapsed seconds onto model time. Supports ``speed``, ``reversed`` global
+    playback, ``play/pause/toggle``, ``seek`` and ``restart``. The underlying model
+    is never mutated, so stills/scrub/export still use ``target.at(t)`` directly.
+    """
+
+    def __init__(self, target, *, speed: float = 1.0, autoplay: bool = True,
+                 reversed: bool = False, time: float = 0.0) -> None:
+        self.target = target
+        self.speed = float(speed)
+        self.playing = bool(autoplay)
+        self.reversed = bool(reversed)
+        self.time = float(time)
+        self._last_now: Optional[float] = None
+
+    @property
+    def duration(self) -> float:
+        return float(getattr(self.target, "duration", 0.0) or 0.0)
+
+    @property
+    def completed(self) -> bool:
+        return bool(getattr(self.target, "completed", False))
+
+    @property
+    def progress(self) -> float:
+        d = self.duration
+        return clamp01(self.time / d) if d > 0 else 0.0
+
+    def _advance(self, dt: float) -> None:
+        if self.playing and dt:
+            self.time += dt * self.speed * (-1.0 if self.reversed else 1.0)
+            if self.time < 0.0:
+                self.time = 0.0
+
+    def update(self, dt: Optional[float] = None, now: Optional[float] = None):
+        """Advance by ``dt`` seconds, or infer it from an absolute ``now`` clock.
+
+        Returns the freshly sampled values (``target.at(model_time)``) and fires
+        the target's forward callbacks.
+        """
+        if now is not None:
+            dt = 0.0 if self._last_now is None else (now - self._last_now)
+            self._last_now = now
+        elif dt is None:
+            dt = 0.0
+        self._advance(dt)
+        return self.sample()
+
+    def sample(self):
+        tk = getattr(self.target, "tick", None)
+        if callable(tk):
+            tk(self.time)
+        return self.target.at(self.time)
+
+    # -- transport ---------------------------------------------------------
+    def play(self) -> "Player":
+        self.playing = True
+        return self
+
+    def pause(self) -> "Player":
+        self.playing = False
+        return self
+
+    def toggle(self) -> "Player":
+        self.playing = not self.playing
+        return self
+
+    def seek(self, t: float):
+        self.time = float(t)
+        return self.sample()
+
+    def restart(self):
+        self.time = 0.0
+        self._last_now = None
+        return self.sample()
