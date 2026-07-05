@@ -405,7 +405,10 @@ ov.render(0.0, target=fbo)
 The full showcase — grid ripple, SVG draw-on, morph, motion-path follower, split
 text, an easing race (incl. spring/elastic/bounce), a layered timeline, overshoot,
 loop/alternate/reversed, and the signal + drag adapters — is
-`examples/anime_gallery.py` (headless `--save` PNG + boot GIF + `--live`).
+`examples/anime_gallery.py` (headless PNG still + looping GIF, or `--live` /
+`--live --camera 0` over a real webcam):
+
+![anime.js motion gallery](docs/media/anime_gallery.png)
 
 ### Reference recreations
 
