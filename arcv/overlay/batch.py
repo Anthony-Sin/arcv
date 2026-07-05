@@ -118,6 +118,29 @@ class VectorBatch:
         self._vert(p1[0], p1[1], 0.0, color, 1e4)
         self._vert(p2[0], p2[1], 0.0, color, 1e4)
 
+    def marker(self, cx, cy, local_pts: Sequence[Point], color: Color,
+               angle: float = 0.0, scale: float = 1.0, width: float = 2.0,
+               fill: bool = False, closed: bool = True, reveal: float = 1.0) -> None:
+        """Draw a local-space shape rotated by ``angle`` (radians) at ``(cx, cy)``.
+
+        This is the rotation-capable primitive the anim layer's motion-path
+        follower needs: ``local_pts`` are defined around the origin (see
+        ``anim.shape_triangle`` / ``shape_chevron``), scaled by ``scale``, rotated
+        to face ``angle`` (e.g. the tangent from ``anim.sample_path``), then
+        placed at ``(cx, cy)``. ``fill=True`` fans a solid shape; otherwise it is
+        stroked (honouring ``reveal`` for draw-on).
+        """
+        c, s = math.cos(angle), math.sin(angle)
+        world: List[Point] = []
+        for lx, ly in local_pts:
+            rx, ry = lx * scale, ly * scale
+            world.append((cx + rx * c - ry * s, cy + rx * s + ry * c))
+        if fill:
+            if len(world) >= 3:
+                self._fill_fan((cx, cy), world + [world[0]], color)
+        else:
+            self.polyline(world, color, width, closed=closed, reveal=reveal)
+
     # rounded rect ---------------------------------------------------------
     def _rrect_points(self, x0, y0, x1, y1, rad, seg=6) -> List[Point]:
         return anim.rrect_points(x0, y0, x1, y1, rad, seg)

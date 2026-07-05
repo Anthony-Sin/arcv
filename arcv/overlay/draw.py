@@ -67,6 +67,10 @@ class Draw:
     def tri_fill(self, p0, p1, p2, c):
         self.ov.vector.triangle_fill(p0, p1, p2, c)
 
+    def marker(self, cx, cy, local_pts, c, angle=0.0, scale=1.0, w=2.0,
+               fill=False, closed=True, reveal=1.0):
+        self.ov.vector.marker(cx, cy, local_pts, c, angle, scale, w, fill, closed, reveal)
+
     def text(self, s, x, y, h, c, align="left", mode="plain", t=0.0, progress=1.0):
         self.ov.text.text(s, x, y, h, c, align, mode, t, progress)
 

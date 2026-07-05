@@ -1022,3 +1022,127 @@ def stagger(value: Any = 0.0, **params: Any) -> Stagger:
                    {"duration": 0.4, "delay": stagger(0.05, grid=(3, 3), from_="center")})
     """
     return Stagger(value, **params)
+
+
+# ===========================================================================
+#  Phase 4 — motion-path + shape-morph geometry (pure Python)
+#
+#  These produce points/angles the existing ov.vector primitives already draw
+#  (polyline, and the new rotation-capable VectorBatch.marker). No value is
+#  emitted that nothing can render.
+# ===========================================================================
+def rotate_points(pts: Sequence[Point], angle: float,
+                  pivot: Point = (0.0, 0.0)) -> List[Point]:
+    """Rotate ``pts`` by ``angle`` radians around ``pivot`` (screen space, y-down)."""
+    c, s = math.cos(angle), math.sin(angle)
+    px, py = pivot
+    out: List[Point] = []
+    for x, y in pts:
+        dx, dy = x - px, y - py
+        out.append((px + dx * c - dy * s, py + dx * s + dy * c))
+    return out
+
+
+def _closed_pts(pts: Sequence[Point], closed: bool) -> List[Point]:
+    pp = list(pts)
+    if closed and len(pp) > 1 and pp[0] != pp[-1]:
+        pp = pp + [pp[0]]
+    return pp
+
+
+def path_length(pts: Sequence[Point], closed: bool = False) -> float:
+    """Total arc length of a polyline (optionally closing back to the start)."""
+    return polyline_length(_closed_pts(pts, closed))
+
+
+def _cumulative(pts: Sequence[Point]) -> Tuple[List[float], float]:
+    acc = [0.0]
+    for i in range(len(pts) - 1):
+        acc.append(acc[-1] + math.hypot(pts[i + 1][0] - pts[i][0],
+                                        pts[i + 1][1] - pts[i][1]))
+    return acc, acc[-1]
+
+
+def sample_path(pts: Sequence[Point], u: float, closed: bool = False) -> Tuple[float, float, float]:
+    """Sample a polyline by **arc length**: return ``(x, y, angle)`` at fraction ``u``.
+
+    ``u`` is normalized ``0..1`` of total length (so ``u=0.5`` is the true
+    half-way point, not the middle vertex). ``angle`` is the tangent direction of
+    travel in radians (``atan2(dy, dx)``), ready to feed to
+    :meth:`VectorBatch.marker` so a follower faces where it is going.
+    """
+    pp = _closed_pts(pts, closed)
+    if len(pp) == 0:
+        return 0.0, 0.0, 0.0
+    if len(pp) == 1:
+        return pp[0][0], pp[0][1], 0.0
+    acc, total = _cumulative(pp)
+    if total <= 1e-9:
+        return pp[0][0], pp[0][1], 0.0
+    u = 0.0 if u < 0.0 else 1.0 if u > 1.0 else u
+    target = u * total
+    # locate the segment containing `target`
+    seg = 0
+    for i in range(len(pp) - 1):
+        if acc[i + 1] >= target or i == len(pp) - 2:
+            seg = i
+            if acc[i + 1] >= target:
+                break
+    L = acc[seg + 1] - acc[seg]
+    f = (target - acc[seg]) / L if L > 1e-9 else 0.0
+    x0, y0 = pp[seg]
+    x1, y1 = pp[seg + 1]
+    x = x0 + (x1 - x0) * f
+    y = y0 + (y1 - y0) * f
+    angle = math.atan2(y1 - y0, x1 - x0)
+    return x, y, angle
+
+
+def resample_polyline(pts: Sequence[Point], n: int, closed: bool = False) -> List[Point]:
+    """Return ``n`` points spaced evenly by arc length along the polyline."""
+    if n <= 0:
+        return []
+    if len(pts) == 0:
+        return []
+    if n == 1:
+        x, y, _ = sample_path(pts, 0.0, closed)
+        return [(x, y)]
+    out: List[Point] = []
+    denom = n if closed else (n - 1)
+    for i in range(n):
+        u = i / denom
+        x, y, _ = sample_path(pts, u, closed)
+        out.append((x, y))
+    return out
+
+
+def morph(a: Sequence[Point], b: Sequence[Point], t: float,
+          samples: Optional[int] = None, closed: bool = False) -> List[Point]:
+    """Interpolate between two shapes — anime.js path/shape morph.
+
+    Both shapes are resampled to a common point count (arc-length even), then
+    linearly interpolated by ``t``. ``morph(a, b, 0) == resample(a)`` and
+    ``morph(a, b, 1) == resample(b)`` (Bucket 2: the static interpolation exists
+    here; the result is drawn by the existing ``polyline`` primitive).
+    """
+    n = samples if samples is not None else max(len(a), len(b), 2)
+    ra = resample_polyline(a, n, closed)
+    rb = resample_polyline(b, n, closed)
+    t = 0.0 if t < 0.0 else 1.0 if t > 1.0 else t
+    return [(ax + (bx - ax) * t, ay + (by - ay) * t)
+            for (ax, ay), (bx, by) in zip(ra, rb)]
+
+
+# -- ready-made marker shapes (local space, centered at origin, facing +x) ----
+def shape_triangle(size: float = 1.0) -> List[Point]:
+    """A solid isoceles triangle pointing along +x (feed to ``marker(fill=True)``)."""
+    return [(size, 0.0), (-0.7 * size, -0.7 * size), (-0.7 * size, 0.7 * size)]
+
+
+def shape_chevron(size: float = 1.0) -> List[Point]:
+    """An open ``>`` chevron pointing along +x (feed to ``marker(fill=False)``)."""
+    return [(-0.5 * size, -0.6 * size), (0.6 * size, 0.0), (-0.5 * size, 0.6 * size)]
+
+
+def shape_diamond(size: float = 1.0) -> List[Point]:
+    return [(size, 0.0), (0.0, -size), (-size, 0.0), (0.0, size)]
