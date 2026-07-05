@@ -410,6 +410,31 @@ loop/alternate/reversed, and the signal + drag adapters — is
 
 ![anime.js motion gallery](docs/media/anime_gallery.png)
 
+**Old vs new, side-by-side.** `examples/anime_boot.py` boots the *same* target-scan
+HUD two ways so the upgrade is literal: the left half uses the pre-port motion
+(Sequencer, arc-length reveal, whole-string decipher, one font); the right half
+uses the new model — a Timeline, grid `stagger`, per-char/word split-text, spring/
+elastic overshoot, a morphing logo, a motion-path sweep — in multiple fonts.
+
+![old vs new boot](docs/media/anime_boot.gif)
+
+### Multiple fonts (`arcv.overlay.fonts`)
+
+The text renderer holds several **named font faces** (each its own atlas + buffer);
+`Draw.text` / `Draw.text_fx` pick one with `font=`. anime.js itself ships no fonts,
+so ARCV supplies the variety: `TextBatch.add_font(name, path)` registers any TTF
+(a bad path falls back to the bundled face, never raising), and
+`fonts.register_hud_fonts(d)` adds `display` / `ocr` / `din` / `term` roles mapped
+to platform system faces (Agency FB, OCR-A, Bahnschrift, Consolas on Windows) with
+graceful fallback.
+
+```python
+from arcv.overlay import Draw, fonts
+d = Draw(ov); fonts.register_hud_fonts(d)
+d.text("TARGET ACQUISITION", 40, 30, 22, C, font="display")   # condensed heading
+d.text("128.4 M", 40, 60, 16, C, font="term")                  # terminal readout
+```
+
 ### Reference recreations
 
 Five external HUD reference images, each recreated with this kit and graded
