@@ -852,3 +852,173 @@ class Timeline:
     def completed(self) -> bool:
         clk = self._clock()
         return clk.completed
+
+    # -- stagger helper ----------------------------------------------------
+    def stagger(self, count: int, props: Dict[str, Any],
+                params: Optional[Dict[str, Any]] = None, position: Any = None) -> "Timeline":
+        """Add ``count`` staggered children in one call — anime.js ``tl`` + ``stagger()``.
+
+        Any :class:`Stagger` value in ``params`` (typically ``delay``) or the
+        ``position`` argument is resolved per index; ``props`` values that are
+        Stagger/functions are resolved by each child :class:`Animation` via its
+        ``index``/``total``. Every child gets ``index=k, total=count`` so
+        function-based values line up.
+        """
+        params = dict(params or {})
+        for k in range(count):
+            resolved = {
+                key: (val(k, count) if isinstance(val, Stagger) else val)
+                for key, val in params.items()
+            }
+            resolved["index"] = k
+            resolved["total"] = count
+            pos = position(k, count) if isinstance(position, Stagger) else position
+            self.add(props, resolved, pos)
+        return self
+
+
+# -- Stagger -----------------------------------------------------------------
+class Stagger:
+    """anime.js ``stagger()`` — per-index (and per-grid-cell) values.
+
+    Distances to an origin are measured in index units (1D) or grid-cell units
+    (2D), optionally constrained to one axis and re-shaped by an easing across
+    the distribution. A :class:`Stagger` is itself callable as ``(index, total)``
+    so it drops straight into an :class:`Animation` function-value or a
+    :meth:`Timeline.stagger` parameter (typically ``delay``).
+
+    Parameters
+    ----------
+    value:
+        The base spacing (scalar) — each step is ``value`` further out — or a
+        ``(start, end)`` range to distribute values across.
+    from_:
+        Origin the distance is measured from: ``"first"``, ``"last"``,
+        ``"center"``, an integer index, or an ``(x, y)`` grid cell.
+    start:
+        Constant offset added to every produced value.
+    grid:
+        ``(cols, rows)`` to lay indices out in 2D; distance becomes Euclidean.
+    axis:
+        ``"x"`` or ``"y"`` to constrain a grid distance to one axis.
+    range:
+        Explicit ``(lo, hi)`` spread (overrides scalar spacing).
+    ease:
+        Easing applied to the normalized distance before scaling (name or fn).
+    reversed:
+        Reverse the produced ordering (mirror the origin).
+    """
+
+    def __init__(
+        self,
+        value: Any = 0.0,
+        *,
+        from_: Any = "first",
+        start: float = 0.0,
+        grid: Optional[Tuple[int, int]] = None,
+        axis: Optional[str] = None,
+        range: Optional[Tuple[float, float]] = None,  # noqa: A002 - anime.js name
+        ease: Any = None,
+        reversed: bool = False,
+    ) -> None:
+        self.value = value
+        self.from_ = from_
+        self.start = float(start)
+        self.grid = grid
+        self.axis = axis
+        self.reversed = bool(reversed)
+        self.ease = _easing.get(ease) if ease is not None else None
+        # effective range: explicit range param, or value if it's a 2-tuple
+        if range is not None:
+            self._range: Optional[Tuple[float, float]] = (float(range[0]), float(range[1]))
+        elif isinstance(value, (tuple, list)) and len(value) == 2:
+            self._range = (float(value[0]), float(value[1]))
+        else:
+            self._range = None
+        self._spacing = 0.0 if self._range is not None else float(value)
+        self._cache: Dict[int, List[float]] = {}
+
+    # -- geometry ----------------------------------------------------------
+    def _origin_1d(self, total: int) -> float:
+        f = self.from_
+        if f == "first":
+            return 0.0
+        if f == "last":
+            return float(total - 1)
+        if f == "center":
+            return (total - 1) / 2.0
+        if isinstance(f, (int, float)):
+            return float(f)
+        return 0.0
+
+    def _origin_grid(self, cols: int, rows: int) -> Tuple[float, float]:
+        f = self.from_
+        if f == "first":
+            return 0.0, 0.0
+        if f == "last":
+            return float(cols - 1), float(rows - 1)
+        if f == "center":
+            return (cols - 1) / 2.0, (rows - 1) / 2.0
+        if isinstance(f, (tuple, list)) and len(f) == 2:
+            return float(f[0]), float(f[1])
+        if isinstance(f, (int, float)):
+            i = int(f)
+            return float(i % cols), float(i // cols)
+        return 0.0, 0.0
+
+    def _distances(self, total: int) -> List[float]:
+        if self.grid is not None:
+            cols, rows = int(self.grid[0]), int(self.grid[1])
+            ox, oy = self._origin_grid(cols, rows)
+            out = []
+            for i in range(total):
+                col, row = float(i % cols), float(i // cols)
+                if self.axis == "x":
+                    out.append(abs(col - ox))
+                elif self.axis == "y":
+                    out.append(abs(row - oy))
+                else:
+                    out.append(math.hypot(col - ox, row - oy))
+            return out
+        origin = self._origin_1d(total)
+        return [abs(i - origin) for i in range(total)]
+
+    # -- values ------------------------------------------------------------
+    def values(self, total: int) -> List[float]:
+        if total <= 0:
+            return []
+        if total in self._cache:
+            return self._cache[total]
+        dist = self._distances(total)
+        maxd = max(dist) if dist else 0.0
+        out: List[float] = []
+        for d in dist:
+            n = d / maxd if maxd > 0.0 else 0.0
+            e = self.ease(n) if self.ease is not None else n
+            if self._range is not None:
+                lo, hi = self._range
+                v = self.start + lo + (hi - lo) * e
+            else:
+                v = self.start + e * maxd * self._spacing
+            out.append(v)
+        if self.reversed:
+            out = list(reversed(out))
+        self._cache[total] = out
+        return out
+
+    def __call__(self, index: int, total: int = 1) -> float:
+        vals = self.values(total)
+        if not vals:
+            return self.start
+        return vals[index % len(vals)]
+
+
+def stagger(value: Any = 0.0, **params: Any) -> Stagger:
+    """Return a :class:`Stagger` (callable ``(index, total) -> value``).
+
+    Example::
+
+        tl.stagger(9, {"scale": (0.0, 1.0)},
+                   {"duration": 0.4, "delay": stagger(0.05, grid=(3, 3), from_="center")})
+    """
+    return Stagger(value, **params)
