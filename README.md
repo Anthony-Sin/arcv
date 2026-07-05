@@ -340,6 +340,73 @@ Built while recreating five external HUD references (see
 `python examples/refs/make_gallery.py` + `python examples/refs/kit_demo.py`
 (committed copies land in `docs/media/`).
 
+### Motion model — anime.js, ported natively (`arcv.overlay.anim`)
+
+A native re-implementation of the [anime.js](https://github.com/juliangarnier/anime)
+v4 motion model, rendered on the GPU over the feed — **not** an import. Everything
+is **deterministic from a time value**: any `.at(t)` is order-independent, so
+scrubbing, single stills and MP4 export all agree. Live playback is a thin
+wall-clock → `t` driver (`Player`) on top. The whole layer is pure Python (no GPU
+import), so it unit-tests without a GL context.
+
+- **Easing** (`arcv.easing`) — the full family: `in/out/inOut` of `quad, cubic,
+  quart, quint, sine, expo, circ, back, elastic, bounce`, plus `steps`,
+  `cubic_bezier(x1,y1,x2,y2)` (Newton+bisection solve), a numerically-integrated
+  `spring(mass,stiffness,damping,velocity)` (cached curve + natural `.duration`),
+  and parameterized `back(overshoot)` / `elastic(amplitude,period)`. Resolve any
+  by string — `easing.get("outElastic(1.2,0.4)")`, `"cubicBezier(.25,.1,.25,1)"`,
+  `"spring(1,120,10)"`.
+- **`Timer` / `Animation` / `Timeline`** — anime.js's three primitives. `Timer` is
+  a bare clock (delay, endDelay, loop, alternate, reversed, `on_begin/update/
+  complete/loop`). `Animation` tweens named properties: `from/to`, keyframe chains,
+  relative `+=`/`-=`/`*=`, function values `lambda i, n: …`, color interpolation
+  (hex/`rgb`/`hsl`/tuple), per-property params. `Timeline` composes them with
+  absolute / relative (`"+=0.1"`) / label (`"boot+=0.2"`) / `"<"`/`">"` positions;
+  `tl.at(t)` returns every child's values.
+- **`stagger()`** — 1-D and 2-D **grid** staggering: `from_="first"/"last"/
+  "center"/index/(x,y)`, `axis` constraint, scalar spacing or `(lo,hi)` range
+  distribution, an easing across the distribution. A `Stagger` is callable
+  `(index, total)`, so it drops straight into a function-value or
+  `tl.stagger(count, props, params)`.
+- **Motion path & morph** — `sample_path(pts, u) → (x, y, angle)` (arc-length +
+  tangent), `morph(a, b, t)` (resample to equal counts + interpolate), plus the
+  rotation-capable renderer primitive `ov.vector.marker` / `Draw.marker` so a
+  follower faces its travel direction. Line draw-on reuses the existing `reveal`.
+- **Split text** — `Draw.text_fx` renders per-glyph `(dx, dy, alpha, scale)` with
+  multi-line layout (the static capability); `anim.char_units` + `anim.text_entrance`
+  drive per-char / word / line staggered fade / slide / scale-in entrances.
+  `decipher` / `typeon` remain on `Draw.text`.
+- **Browser-only → native adapters** (`arcv.overlay.adapters`) — anime.js's DOM
+  helpers, re-expressed against values you already have:
+
+  | anime.js (DOM) | ARCV-native |
+  |---|---|
+  | `ScrollObserver` / `onScroll` | `DriverFromSignal` — map any scalar (detection count, optical-flow magnitude, a scrub knob) onto a target's model time |
+  | `createDraggable` | `Draggable` — drag a value from pointer state you feed it (`Scene.set_mouse`), with bounds / axis / snap / inertia |
+  | `createScope` + responsive media | `Scope` — scale a design authored at a reference resolution to the live one; named breakpoints stand in for media queries |
+
+  Genuinely DOM-only features are listed, not faked, in `adapters.NOT_APPLICABLE`.
+
+```python
+from arcv.overlay import Overlay, Draw, anim
+ov = Overlay(ctx, (1280, 720)); d = Draw(ov)
+
+tl = anim.Timeline()
+tl.stagger(9, {"scale": (0.0, 1.0)},
+           {"duration": 0.5, "ease": "outBack",
+            "delay": anim.stagger(0.06, grid=(3, 3), from_="center")})
+
+ov.begin()
+for cid, vals in tl.at(0.4).items():      # deterministic snapshot at t=0.4s
+    ...                                    # draw each cell at vals["scale"]
+ov.render(0.0, target=fbo)
+```
+
+The full showcase — grid ripple, SVG draw-on, morph, motion-path follower, split
+text, an easing race (incl. spring/elastic/bounce), a layered timeline, overshoot,
+loop/alternate/reversed, and the signal + drag adapters — is
+`examples/anime_gallery.py` (headless `--save` PNG + boot GIF + `--live`).
+
 ### Reference recreations
 
 Five external HUD reference images, each recreated with this kit and graded
