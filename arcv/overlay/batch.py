@@ -234,6 +234,74 @@ class TextBatch:
             ):
                 self.data.extend((px, py, u, v, r, g, b, a))
 
+    def text_transformed(self, s, x, y, height, color: Color, align="left",
+                         per_char=None, line_height: float = 1.3) -> None:
+        """Draw text with an independent per-character transform — the static
+        capability behind anime.js "split text".
+
+        ``per_char`` is ``(k, ch) -> (dx, dy, alpha, scale)`` where ``k`` is the
+        index into ``s`` (newlines included, matching :func:`anim.char_units`).
+        Each glyph is scaled about its own centre, alpha-multiplied, then shifted
+        by ``(dx, dy)`` — enough for per-unit fade / slide / scale-in entrances.
+        Multi-line strings (``\\n``) are laid out so line-level staggers work.
+        ``per_char=None`` renders plain text.
+        """
+        adv = self.advance(height)
+        r, g, b, a = color
+        lines = s.split("\n")
+        line_len = [len(ln) for ln in lines]
+        k = 0
+        line = 0
+        col = 0
+        line_y = y
+        base_x = self._align_x(x, line_len[0] * adv, align)
+        for ch in s:
+            if ch == "\n":
+                line += 1
+                col = 0
+                line_y += height * line_height
+                base_x = self._align_x(x, line_len[line] * adv, align)
+                k += 1
+                continue
+            dx = dy = 0.0
+            alpha = 1.0
+            scale = 1.0
+            if per_char is not None:
+                res = per_char(k, ch)
+                if res is not None:
+                    dx = res[0]
+                    dy = res[1]
+                    alpha = res[2] if len(res) > 2 else 1.0
+                    scale = res[3] if len(res) > 3 else 1.0
+            k += 1
+            col_x = base_x + col * adv
+            col += 1
+            if ch == " " or alpha <= 0.0 or scale <= 0.0:
+                continue
+            u0, u1 = self.atlas.u_range(ch)
+            x0, x1 = col_x, col_x + adv
+            y0, y1 = line_y, line_y + height
+            cx, cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
+            # scale about the glyph centre, then translate
+            x0 = cx + (x0 - cx) * scale + dx
+            x1 = cx + (x1 - cx) * scale + dx
+            y0 = cy + (y0 - cy) * scale + dy
+            y1 = cy + (y1 - cy) * scale + dy
+            ca = a * alpha
+            for (px, py, u, v) in (
+                (x0, y0, u0, 0.0), (x1, y0, u1, 0.0), (x1, y1, u1, 1.0),
+                (x0, y0, u0, 0.0), (x1, y1, u1, 1.0), (x0, y1, u0, 1.0),
+            ):
+                self.data.extend((px, py, u, v, r, g, b, ca))
+
+    @staticmethod
+    def _align_x(x: float, total: float, align: str) -> float:
+        if align == "center":
+            return x - total * 0.5
+        if align == "right":
+            return x - total
+        return x
+
     def _ensure(self, nbytes: int) -> None:
         if self._buf is None or nbytes > self._cap:
             if self._buf is not None:

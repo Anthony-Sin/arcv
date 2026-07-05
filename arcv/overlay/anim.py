@@ -1146,3 +1146,81 @@ def shape_chevron(size: float = 1.0) -> List[Point]:
 
 def shape_diamond(size: float = 1.0) -> List[Point]:
     return [(size, 0.0), (0.0, -size), (-size, 0.0), (0.0, size)]
+
+
+# ===========================================================================
+#  Phase 5 — split text (chars / words / lines) + per-unit stagger entrance
+#
+#  The renderer exposes the static per-glyph transform (TextBatch.text_transformed
+#  / Draw.text_fx). These pure helpers split a string into units and build the
+#  per-char transform that drives a staggered fade / slide / scale-in entrance.
+# ===========================================================================
+def char_units(s: str, by: str = "chars") -> Tuple[List[int], int]:
+    """Map every character index of ``s`` to a unit index.
+
+    ``by`` is ``"chars"`` (each character its own unit), ``"words"`` (whitespace
+    delimited) or ``"lines"`` (``\n`` delimited). Returns ``(unit_per_char,
+    unit_count)`` — indices align with the ``k`` passed to ``text_transformed``.
+    """
+    n = len(s)
+    if by == "chars":
+        return list(range(n)), n
+    if by == "lines":
+        out: List[int] = []
+        line = 0
+        for ch in s:
+            out.append(line)
+            if ch == "\n":
+                line += 1
+        return out, (line + 1)
+    # words
+    out = []
+    word = -1
+    in_word = False
+    for ch in s:
+        if ch.isspace():
+            in_word = False
+            out.append(max(word, 0))
+        else:
+            if not in_word:
+                word += 1
+                in_word = True
+            out.append(word)
+    return out, (word + 1 if word >= 0 else 0)
+
+
+def text_entrance(
+    s: str,
+    t: float,
+    *,
+    by: str = "chars",
+    stagger: float = 0.05,
+    duration: float = 0.4,
+    ease: Any = "outCubic",
+    from_: Any = "first",
+    grid: Optional[Tuple[int, int]] = None,
+    fade: bool = True,
+    slide: float = 0.0,
+    scale_from: float = 1.0,
+) -> Callable[[int, str], Tuple[float, float, float, float]]:
+    """Build a ``per_char(k, ch)`` transform for a staggered entrance at time ``t``.
+
+    Units (chars/words/lines) enter on a :class:`Stagger` schedule; each unit's
+    progress drives an optional fade, an upward ``slide`` (pixels it rises from),
+    and a ``scale_from`` → 1 scale-in. Deterministic in ``t``, so it scrubs and
+    exports cleanly. Drive it with ``d.text_fx(s, x, y, h, c, per_char=...)``.
+    """
+    units, count = char_units(s, by)
+    delays = Stagger(stagger, from_=from_, grid=grid).values(count) if count else []
+    ez = _easing.get(ease)
+
+    def per_char(k: int, ch: str) -> Tuple[float, float, float, float]:
+        u = units[k] if k < len(units) else 0
+        d0 = delays[u] if u < len(delays) else 0.0
+        p = ez(clamp01((t - d0) / duration)) if duration > 0 else (1.0 if t >= d0 else 0.0)
+        alpha = p if fade else 1.0
+        dy = (1.0 - p) * slide
+        scale = scale_from + (1.0 - scale_from) * p
+        return (0.0, dy, alpha, scale)
+
+    return per_char

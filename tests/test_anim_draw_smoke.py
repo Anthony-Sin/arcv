@@ -62,6 +62,14 @@ def test_marker_and_path_render(ctx):
     rev = anim.Animation({"reveal": (0.0, 1.0)}, duration=1.0).at(0.6)["reveal"]
     d.line(20, 380, 620, 380, C, 2.0, reveal=rev)
 
+    # split-text: per-char staggered fade + slide + scale-in
+    per = anim.text_entrance("SPLIT TEXT", t=0.4, by="chars",
+                             stagger=0.04, duration=0.4, slide=10.0, scale_from=0.3)
+    d.text_fx("SPLIT TEXT", 30, 150, 22, C, per_char=per)
+    # multi-line, word-level stagger
+    per2 = anim.text_entrance("LINE ONE\nLINE TWO", t=0.6, by="lines", stagger=0.2)
+    d.text_fx("LINE ONE\nLINE TWO", 400, 150, 18, C, per_char=per2)
+
     ov.render(0.0, target=out.fbo)
 
     assert ctx.error == "GL_NO_ERROR"

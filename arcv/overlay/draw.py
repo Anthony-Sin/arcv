@@ -74,5 +74,8 @@ class Draw:
     def text(self, s, x, y, h, c, align="left", mode="plain", t=0.0, progress=1.0):
         self.ov.text.text(s, x, y, h, c, align, mode, t, progress)
 
+    def text_fx(self, s, x, y, h, c, align="left", per_char=None, line_height=1.3):
+        self.ov.text.text_transformed(s, x, y, h, c, align, per_char, line_height)
+
     def text_width(self, s, h):
         return self.ov.text.measure(s, h)
